@@ -1,0 +1,33 @@
+# Copies the private play counts into plays.json on the "stats" branch.
+# GitHub Pages only serves "main", so the counts never show on the site.
+name: play stats
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  stats:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read counts
+        run: |
+          echo "{" > plays.json
+          first=1
+          for s in heart sirens circles letter surrender change; do
+            n=$(curl -fsS "https://abacus.jasoncameron.dev/get/ocean-music-6fba657dc59f/$s" | python3 -c "import sys,json;print(json.load(sys.stdin).get('value',0))" 2>/dev/null || echo 0)
+            [ $first = 1 ] || echo "," >> plays.json; first=0
+            printf '  "%s": %s' "$s" "${n:-0}" >> plays.json
+          done
+          printf ',\n  "updated": "%s"\n}\n' "$(date -u +%Y-%m-%dT%H:%MZ)" >> plays.json
+          cat plays.json
+      - name: Save to the stats branch
+        run: |
+          git init -q s && cd s
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}"
+          git checkout -q -b stats
+          cp ../plays.json .
+          git add plays.json
+          git -c user.name="play stats" -c user.email="actions@users.noreply.github.com" commit -qm "Play counts"
+          git push -qf origin stats

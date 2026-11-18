@@ -651,6 +651,14 @@ function load(i) {
   $("#heroPlayText").innerHTML = "";
   $("#heroPlayText").append("Now", document.createElement("br"), t.title);
   drawAll();
+  playCounted = false;
+}
+/* quiet play counter: one count per song once it has played 5 seconds on the live site; nothing is shown on the page */
+let playCounted = true;
+const COUNT_PLAYS = !/^(localhost|127\.|0\.0\.0\.0|\[::1\])|claude|anthropic/i.test(location.hostname) && location.protocol.startsWith("http");
+function countPlay(t) {
+  if (!COUNT_PLAYS) return;
+  try { fetch("https://abacus.jasoncameron.dev/hit/ocean-music-6fba657dc59f/" + t.file.toLowerCase().replace(/[^a-z0-9_.-]/g, "-"), { keepalive: true, mode: "cors" }).catch(() => {}); } catch (e) {}
 }
 function play(i) {
   ensureAudio();
@@ -669,6 +677,7 @@ audio.addEventListener("play", syncIcon); audio.addEventListener("pause", syncIc
 audio.addEventListener("ended", () => play(cur + 1));
 audio.addEventListener("error", () => { if (audio.getAttribute("src")) $("#dSub").textContent = "This song didn't load. Try another one."; });
 audio.addEventListener("timeupdate", () => {
+  if (!playCounted && audio.currentTime > 5) { playCounted = true; countPlay(TRACKS[cur]); }
   if (seeking) return;
   const d = audio.duration || TRACKS[cur].dur, p = audio.currentTime / d;
   seek.value = p * 1000; seek.style.setProperty("--p", p * 100 + "%");
