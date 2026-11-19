@@ -273,6 +273,13 @@ a{color:inherit}
 .ic{width:38px;height:38px;display:grid;place-items:center;border-radius:50%;transition:background .2s,color .2s}
 .ic:hover{background:var(--paper);color:var(--ink)}
 .ic svg{width:17px;height:17px;fill:currentColor}
+.ic.mode{position:relative;color:var(--ash);-webkit-tap-highlight-color:transparent}
+.ic:focus:not(:focus-visible){outline:none}
+.ic.mode:hover{background:none;color:var(--paper)}
+.ic.mode.on{color:var(--ember)}
+.ic.mode.on::after{content:"";position:absolute;bottom:3px;left:50%;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:var(--ember);box-shadow:0 0 6px var(--ember)}
+.ic.mode i{display:none;position:absolute;top:6px;right:4px;min-width:12px;height:12px;border-radius:6px;background:var(--ember);color:var(--ink);font:700 8.5px/12px var(--mono,monospace);font-style:normal;text-align:center}
+#rep.one i{display:block}
 #play{background:var(--paper);color:var(--ink);width:44px;height:44px;transition:box-shadow .4s}
 #play[aria-label=Pause]{box-shadow:0 0 0 4px var(--ember-soft),0 0 22px rgba(255,122,28,.35)}
 .who{min-width:0}
@@ -302,6 +309,7 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border:0;border-radiu
 @media (max-width:720px){
   :root{--dock:112px}
   .dock{grid-template-columns:auto minmax(0,1fr);row-gap:2px}
+  .ctl{gap:2px}.ctl .ic:not(#play){width:34px;height:34px}
   .bar{grid-column:1/-1;order:3}
   .side{display:none}
   .hero-meta .hide-s{display:none}
@@ -482,9 +490,11 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border:0;border-radiu
 
 <div class="dock gut" role="region" aria-label="Music player">
   <div class="ctl">
+    <button class="ic mode" id="shuf" type="button" aria-label="Shuffle" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M17 3l4 4-4 4V8h-2.2c-1 0-1.9.5-2.5 1.3L7.6 16c-1 1.5-2.7 2.4-4.5 2.4H2v-2.4h1.1c1 0 1.9-.5 2.5-1.3l4.7-6.7C11.3 6.5 13 5.6 14.8 5.6H17zM2 5.6h1.1c1.8 0 3.5.9 4.5 2.4l.7 1-1.5 2.1-1.2-1.8C5 8.5 4.1 8 3.1 8H2zm13.8 10.4H17v-2.6l4 4-4 4v-3h-2.2c-1.8 0-3.5-.9-4.5-2.4l-.7-1 1.5-2.1 1.2 1.8c.6.8 1.5 1.3 2.5 1.3z"/></svg></button>
     <button class="ic" id="prev" type="button" aria-label="Previous song"><svg viewBox="0 0 24 24"><path d="M6 5h2.5v14H6zM20 5v14L9.5 12z"/></svg></button>
     <button class="ic" id="play" type="button" aria-label="Play"><svg viewBox="0 0 24 24"><path id="playIcon" d="M7 4v16l13-8z"/></svg></button>
     <button class="ic" id="next" type="button" aria-label="Next song"><svg viewBox="0 0 24 24"><path d="M15.5 5H18v14h-2.5zM4 5l10.5 7L4 19z"/></svg></button>
+    <button class="ic mode" id="rep" type="button" aria-label="Repeat: off"><svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z"/></svg><i aria-hidden="true">1</i></button>
   </div>
   <div class="who"><b id="dTitle">Heart</b><span id="dSub">Ocean</span></div>
   <div class="bar"><span id="cur">0:00</span><input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek through the song"><span id="dur">0:00</span></div>
@@ -674,7 +684,25 @@ function syncIcon() {
   $("#play").setAttribute("aria-label", on ? "Pause" : "Play");
 }
 audio.addEventListener("play", syncIcon); audio.addEventListener("pause", syncIcon);
-audio.addEventListener("ended", () => play(cur + 1));
+/* repeat: 0 off, 1 all songs, 2 this song. shuffle plays every song once in a random order */
+let repeat = 0, shuffle = false, order = TRACKS.map((_, n) => n);
+function reorder() {
+  order = TRACKS.map((_, n) => n);
+  if (shuffle) {
+    for (let n = order.length - 1; n > 0; n--) { const k = Math.floor(Math.random() * (n + 1)); [order[n], order[k]] = [order[k], order[n]]; }
+    order.splice(order.indexOf(cur), 1); order.unshift(cur);
+  }
+}
+const step = d => { const n = order.length, at = order.indexOf(cur); return order[(at + d + n) % n]; };
+function skip() {
+  if (shuffle && order.indexOf(cur) === order.length - 1) { const last = cur; reorder(); if (order[0] === last && order.length > 1) { order.push(order.shift()); } return play(order[0]); }
+  play(step(1));
+}
+audio.addEventListener("ended", () => {
+  if (repeat === 2) { audio.currentTime = 0; playCounted = false; const p = audio.play(); if (p) p.catch(() => {}); return; }
+  if (repeat === 0 && order.indexOf(cur) === order.length - 1) { audio.currentTime = 0; syncIcon(); return; }
+  skip();
+});
 audio.addEventListener("error", () => { if (audio.getAttribute("src")) $("#dSub").textContent = "This song didn't load. Try another one."; });
 audio.addEventListener("timeupdate", () => {
   if (!playCounted && audio.currentTime > 5) { playCounted = true; countPlay(TRACKS[cur]); }
@@ -695,7 +723,17 @@ seek.addEventListener("input", () => {
 addEventListener("pointerup", () => seeking = false);
 vol.style.setProperty("--p", "85%");
 vol.addEventListener("input", () => { audio.volume = vol.value / 100; vol.style.setProperty("--p", vol.value + "%"); });
-$("#play").onclick = toggle; $("#prev").onclick = () => play(cur - 1); $("#next").onclick = () => play(cur + 1);
+$("#play").onclick = toggle; $("#prev").onclick = () => { if (audio.currentTime > 3) { audio.currentTime = 0; play(); } else play(step(-1)); };
+$("#next").onclick = skip;
+$("#shuf").onclick = e => {
+  shuffle = !shuffle; reorder();
+  e.currentTarget.classList.toggle("on", shuffle); e.currentTarget.setAttribute("aria-pressed", shuffle);
+};
+$("#rep").onclick = e => {
+  repeat = (repeat + 1) % 3; const b = e.currentTarget;
+  b.classList.toggle("on", repeat > 0); b.classList.toggle("one", repeat === 2);
+  b.setAttribute("aria-label", ["Repeat: off", "Repeat: all songs", "Repeat: this song"][repeat]);
+};
 $("#heroPlay").onclick = () => { if (started && !audio.paused) audio.pause(); else play(started ? undefined : 0); };
 $("#playAll").onclick = () => { play(0); audio.currentTime = 0; };
 addEventListener("keydown", e => {
